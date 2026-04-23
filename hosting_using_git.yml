@@ -1,0 +1,51 @@
+---
+- name: Using Git to host a webpage
+  hosts: 192.168.0.241
+  become: yes
+
+  vars:
+    repo_url: "https://github.com/SheikhMohammadNashid/Website.git"
+    checkout_dir: "/project/git_repo_files"
+
+  tasks:
+
+    - name: Install Git and Apache2
+      apt:
+        name:
+          - git
+          - apache2
+        state: present
+
+    - name: Start Apache2 service
+      service:
+        name: apache2
+        state: started
+        enabled: yes
+
+    - name: Remove default Apache webpage
+      file:
+        path: /var/www/html/index.html
+        state: absent
+
+    - name: Clone the Git repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ checkout_dir }}"
+        version: main
+        force: yes
+
+    - name: Copy website to Apache folder
+      copy:
+        src: "{{ checkout_dir }}/"
+        dest: /var/www/html/
+        owner: www-data
+        group: www-data
+        mode: '0755'
+        remote_src: yes
+      notify: Restart apache2
+
+  handlers:
+    - name: Restart apache2
+      service:
+        name: apache2
+        state: restarted

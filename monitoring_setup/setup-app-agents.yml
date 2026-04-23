@@ -1,0 +1,57 @@
+---
+# USAGE: ansible-playbook -i 192.168.1.35,192.168.1.36, setup-app-agents.yml
+- name: Install Agents on App VMs
+  hosts: all
+  remote_user: veransible
+  become: true
+
+  tasks:
+    - name: Ensure Docker Python Libs
+      apt:
+        name: [python3-docker, python3-requests]
+        state: present
+        update_cache: yes
+
+    # 1. Node Exporter (Hardware)
+    - name: Start Node Exporter
+      community.docker.docker_container:
+        name: node-exporter
+        image: prom/node-exporter:latest
+        state: started
+        restart_policy: always
+        ports: ["9100:9100"]
+        volumes:
+          - /proc:/host/proc:ro
+          - /sys:/host/sys:ro
+          - /:/rootfs:ro
+        command:
+          - '--path.procfs=/host/proc'
+          - '--path.sysfs=/host/sys'
+
+    # 2. cAdvisor (Containers) - NOTE PORT 8081
+    - name: Start cAdvisor
+      community.docker.docker_container:
+        name: cadvisor
+        image: gcr.io/cadvisor/cadvisor:latest
+        state: started
+        restart_policy: always
+        ports: ["8081:8080"]
+        volumes:
+          - /:/rootfs:ro
+          - /var/run:/var/run:ro
+          - /sys:/sys:ro
+          - /var/lib/docker/:/var/lib/docker:ro
+          - /dev/disk/:/dev/disk:ro
+        privileged: true
+        devices: ["/dev/kmsg"]
+    # --- TASK 3: POSTGRES EXPORTER ---
+    - name: Start Postgres Exporter
+      community.docker.docker_container:
+        name: postgres-exporter
+        image: prometheuscommunity/postgres-exporter:latest
+        state: started
+        restart_policy: always
+        ports: ["9187:9187"]
+        env:
+          # Syntax: postgresql://User:Password@HostIP:Port/DatabaseName?sslmode=disable
+          DATA_SOURCE_NAME: "postgresql://verv-user:vervsuperpassword1@{{ ansible_host }}:5432/postgres?sslmode=disable"

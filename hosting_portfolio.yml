@@ -1,0 +1,34 @@
+---
+- name: Hosting portfolio
+  hosts: all
+  become: yes
+
+  tasks:
+
+    - name: Install Apache (Debian/Ubuntu)
+      apt:
+        name: apache2
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Start and enable Apache service (Ubuntu)
+      service:
+        name: apache2
+        state: started
+        enabled: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Copy portfolio HTML file to web directory
+      copy:
+        src: /home/fatih/Documents/project/index.html   # HTML file on controller
+        dest: /var/www/html/index.html                  # file on target
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Restart Apache after copying file
+      service:
+        name: apache2
+        state: restarted
+      when: ansible_os_family == "Debian"
+

@@ -1,0 +1,23 @@
+---
+- name: Host verventech website
+  hosts: 192.168.1.25
+  remote_user: ans1
+  become: yes
+
+  tasks:
+    - name: Install Apache Server package
+      package:
+        name: apache2
+        state: present
+    - name: Copy website folder from ansible to apache-server
+      copy:
+        src: ./my_website_folder/
+        dest: /var/www/html/
+        owner: www-data
+        group: www-data
+        mode: '0755'
+    - name: Start Apache
+      service:
+        name: apache2
+        state: started
+        enabled: true 

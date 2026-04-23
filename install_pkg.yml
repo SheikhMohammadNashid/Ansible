@@ -1,0 +1,17 @@
+---
+- name: Install Software
+  hosts: all
+  remote_user: ans1
+  become: true
+
+  tasks:
+    - name: Install the Apache Web Server
+      package:
+        name: apache2
+        state: present
+
+    - name: Start Apache
+      service:
+        name: apache2
+        state: started
+        enabled: true

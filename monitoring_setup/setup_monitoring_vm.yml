@@ -1,0 +1,138 @@
+---
+# USAGE: ansible-playbook -i 192.168.1.29, setup_monitoring_vm.yml
+# (Replace 192.168.1.29 with your actual Management VM IP)
+
+- name: Setup Management Server (Docker + Monitoring Stack)
+  hosts: all
+  remote_user: veransible
+  become: true
+  vars:
+    base_dir: "/opt/monitoring"
+    # User who owns the config files
+    monitor_user: "veransible"
+
+  tasks:
+    # =========================================================
+    # PART 1: INSTALL DOCKER ENGINE (The Robust Way)
+    # =========================================================
+    
+    # 1. Install dependencies required to add repositories
+    - name: Install system prerequisites
+      apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - python3-requests # Crucial for Ansible modules
+        state: present
+        update_cache: yes
+
+    # 2. Add Docker's official GPG key
+    - name: Create directory for Docker GPG key
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Docker GPG apt Key
+      get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+        force: true
+
+    # 3. Add the Docker Repository to sources list
+    - name: Add Docker Repository
+      apt_repository:
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    # 4. NOW install Docker Engine (Repo is ready)
+    - name: Install Docker Engine and Plugins
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+          - python3-docker # Required for Ansible docker modules
+        state: present
+        update_cache: true
+
+    # 5. Ensure user can run docker commands
+    - name: Add user to Docker group
+      user:
+        name: "{{ monitor_user }}"
+        groups: docker
+        append: yes
+
+    # =========================================================
+    # PART 2: DEPLOY MONITORING STACK (Prometheus/Grafana)
+    # =========================================================
+
+    - name: Create Config Directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ monitor_user }}"
+        group: "{{ monitor_user }}"
+      with_items:
+        - "{{ base_dir }}/prometheus"
+        - "{{ base_dir }}/blackbox"
+        - "{{ base_dir }}/grafana"
+
+    - name: Copy Config Files
+      copy:
+        src: "./{{ item.src }}"
+        dest: "{{ base_dir }}/{{ item.dest }}"
+        owner: "{{ monitor_user }}"
+        mode: '0644'
+      with_items:
+        - { src: 'prometheus.yml', dest: 'prometheus/prometheus.yml' }
+        - { src: 'blackbox.yml', dest: 'blackbox/blackbox.yml' }
+      notify: Restart Stack
+
+    - name: Start Prometheus Container
+      community.docker.docker_container:
+        name: prometheus
+        image: prom/prometheus:latest
+        state: started
+        restart_policy: always
+        ports: ["9090:9090"]
+        volumes:
+          - "{{ base_dir }}/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml"
+          - prometheus_data:/prometheus
+
+    - name: Start Grafana Container
+      community.docker.docker_container:
+        name: grafana
+        image: grafana/grafana:latest
+        state: started
+        restart_policy: always
+        ports: ["3000:3000"]
+        volumes:
+          - grafana_data:/var/lib/grafana
+
+    - name: Start Blackbox Exporter
+      community.docker.docker_container:
+        name: blackbox_exporter
+        image: prom/blackbox-exporter:latest
+        state: started
+        restart_policy: always
+        ports: ["9115:9115"]
+        volumes:
+          - "{{ base_dir }}/blackbox:/config"
+        command: ["--config.file=/config/blackbox.yml"]
+
+  handlers:
+    - name: Restart Stack
+      community.docker.docker_container:
+        name: "{{ item }}"
+        state: started     # Must be 'started'
+        restart: true      # This flag triggers the restart
+      with_items: 
+        - prometheus
+        - blackbox_exporter

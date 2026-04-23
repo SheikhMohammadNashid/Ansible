@@ -1,0 +1,58 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # 1. Hardware Metrics (Node Exporter)
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: 
+        - '192.168.1.35:9100'  # Production
+        - '192.168.1.36:9100'  # Staging
+
+  # 2. Docker Metrics (cAdvisor)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: 
+        - '192.168.1.35:8081'  # Production (Mapped to 8081)
+        - '192.168.1.36:8081'  # Staging (Mapped to 8081)
+
+  # 3. Website Uptime (Blackbox Probe)
+  - job_name: 'http_probe'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+        - http://192.168.1.35  # Staging Website
+        - http://192.168.1.36 # Prod website
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.1.29:9115  # Blackbox is LOCAL on Mgmt VM
+  - job_name: 'ngrok_public'
+    metrics_path: /probe
+    params:
+      module: [http_ngrok]  # <--- Use the new module
+    static_configs:
+      - targets:
+        - https://abstemiously-ladyless-phyliss.ngrok-free.dev # <--- Ensure this is CURRENT
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 192.168.1.29:9115  
+    # 4. Added Jenkind Metrics
+  - job_name: 'jenkins'
+    metrics_path: /prometheus
+    static_configs:
+      - targets: ['192.168.1.35:8080'] # Your Jenkins IP:Port
+
+    #5. Added PSQL Metrics
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['192.168.1.35:9187', '192.168.1.36:9187']
