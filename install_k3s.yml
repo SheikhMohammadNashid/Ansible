@@ -1,0 +1,57 @@
+---
+- name: Install Single Node K3s
+  hosts: 192.168.0.146
+  become: true
+  vars:
+    # 2026 Pro-tip: Set a specific version for stability
+    k3s_version: "v1.32.1+k3s1" 
+
+  tasks:
+    - name: Install required system packages
+      ansible.builtin.package:
+        name: [curl, ca-certificates]
+        state: present
+
+    - name: Apply AppArmor fix for modern Ubuntu/Debian (2026 requirement)
+      ansible.builtin.copy:
+        dest: /etc/apparmor.d/usr.local.bin.k3s
+        content: |
+          abi <abi/4.0>,
+          include <tunables/global>
+          /usr/local/bin/k3s flags=(unconfined) {
+            userns,
+            include if exists <local/usr.local.bin.k3s>
+          }
+      register: apparmor_config
+
+    - name: Reload AppArmor if config changed
+      ansible.builtin.systemd:
+        name: apparmor
+        state: restarted
+      when: apparmor_config.changed
+
+    - name: Run K3s installer script
+      ansible.builtin.shell: >
+        curl -sfL https://get.k3s.io | 
+        INSTALL_K3S_VERSION="{{ k3s_version }}" 
+        sh -s - server --write-kubeconfig-mode 644
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Wait for K3s to be ready
+      ansible.builtin.command: k3s kubectl wait --for=condition=Ready node --all --timeout=60s
+      changed_when: false
+
+    - name: Fetch Kubeconfig to local machine
+      ansible.builtin.fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "./k3s-config.yaml"
+        flat: yes
+
+    - name: Update Kubeconfig IP locally
+      delegate_to: localhost
+      become: false
+      ansible.builtin.replace:
+        path: "./k3s-config.yaml"
+        regexp: '127.0.0.1'
+        replace: "{{ ansible_host }}"
