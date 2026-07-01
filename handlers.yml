@@ -1,0 +1,61 @@
+---
+- name: Provisioning Servers
+  hosts: all
+  become: yes
+  tasks:
+    # --- CENTOS / REDHAT OS GROUP ---
+    - name: Configure CentOS Servers
+      when: ansible_facts['distribution'] == "CentOS"
+      block:
+        - name: Install CentOS packages
+          yum:
+            name:
+              - chrony
+              - wget
+              - git
+              - zip
+              - unzip
+            state: present
+
+        - name: Deploy chrony config
+          template:
+            src: templates/chrony.conf
+            dest: /etc/chrony.conf
+            backup: yes
+          notify: Restart chronyd
+
+    # --- UBUNTU / DEBIAN OS GROUP ---
+    - name: Configure Ubuntu Servers
+      when: ansible_facts['distribution'] == "Ubuntu"
+      block:
+        - name: Install Ubuntu packages
+          apt:
+            name:
+              - chrony  # Note: Modern Ubuntu uses chrony instead of ntp by default
+              - wget
+              - git
+              - zip
+              - unzip
+            state: present
+            update_cache: yes
+
+        - name: Deploy ntp/chrony config for Ubuntu
+          template:
+            src: templates/ntp.conf
+            dest: /etc/ntp.conf
+            backup: yes
+          notify: Restart ntp
+
+  # --- HANDLERS (Only run if templates change) ---
+  handlers:
+    - name: Restart chronyd
+      service:
+        name: chronyd
+        state: restarted
+        enabled: yes
+
+    - name: Restart ntp
+      service:
+        name: ntp
+        state: restarted
+        enabled: yes
