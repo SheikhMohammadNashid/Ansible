@@ -1,0 +1,40 @@
+---
+- name: Provisioning Servers
+  hosts: all
+  become: yes
+  tasks:
+    - name: Provisioning CentOS Servers
+      yum:
+        name: "{{ item }}"
+        state: present
+      when: ansible_facts['distribution'] == "CentOS"
+      loop:
+        - chrony
+        - wget
+        - git
+        - zip
+        - unzip
+    - name: Provisioning Ubuntu Servers
+      yum:
+        name: "{{ item }}"
+        state: present
+      when: ansible_facts['distribution'] == "ubuntu"
+      loop:
+        - ntp
+        - wget
+        - git
+        - zip
+        - unzip
+    - name: Start service in CentOS
+      service:
+        name: chronyd
+        state: started
+        enabled: yes
+      when: ansible_facts['distribution'] == "CentOS"
+
+    - name: Start service on Ubuntu
+      service:
+        name: ntp
+        state: started
+        enabled: yes
+      when: ansible_facts['distribution'] == "Ubuntu"
